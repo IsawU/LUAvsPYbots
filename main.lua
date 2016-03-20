@@ -9,7 +9,6 @@ function love.load()
 	
 	tileSize=80
 	
-	love.window.setTitle("LUA vs PYbots")
 	scale=1
 	
 	--assets
@@ -35,17 +34,24 @@ function love.load()
 	tiles[4]=love.graphics.newImage(TAP .. "floor.png")		--baterry_bot ???
 	
 	
-	debugFont=love.graphics.newFont(20)
-	colorWhite={255,255,255,255}
-	colorDebug={255,0,0,255}
+	fonts={}
+	fonts["DEBUG"]=love.graphics.newFont(20)
+	fonts["HELP"]=love.graphics.newFont(20)
+	colors={}
+	colors["DEFAULT"]={255,255,255,255}
+	colors["DEBUG"]={255,0,0,255}
+	colors["HELP"]={0,0,0,255}
+	colors["UNDERLAY"]={255,255,255,128}
 	
 	--vars
 	WON=nil
 	tim=0
 	updateTim=1
-	debug=true
+	debug=false
 	--debug=false
 	debugStuff=""
+	
+	help=true
 	
 	drag=false
 	
@@ -59,7 +65,7 @@ function love.load()
 	--botID="149294806402758316987601636401142037943"
 	
 	
-	res,sc,data=http.request(serverAddr .. "/game/" .. botID)	--result, state code, content
+	res,sc,data=http.request(serverAddr .."/game/" .. botID)	--result, state code, content
 	oldRes=res		--old data (form of original JSON)
 	AD=decode(res)	--actualData
 	
@@ -261,7 +267,7 @@ end
 
 function FWD()
 	--SEND "STEP"
-	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
+	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=step")
 	--rememberres=res
 	if res=="game_won" then
 		WON=true
@@ -274,13 +280,13 @@ end
 
 function LEFT()
 	--SEND "TURN_LEFT"
-	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_left")
+	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=turn_left")
 	update()
 end
 
 function RIGHT()
 	--SEND "TURN_RIGHT"
-	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_right")
+	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=turn_right")
 	update()
 end
 
@@ -299,7 +305,7 @@ end
 
 function update()
 
-	res,sc,data=http.request(serverAddr .. "/game/" .. botID)	--result, state code, content
+	res,sc,data=http.request( serverAddr .."/game/" .. botID)	--result, state code, content
 	AD=decode(res)	--actualData
 	drawMap()
 
@@ -337,6 +343,34 @@ function drawMap()
 	--end
 end
 
+function check()	--inused
+
+	res,sc,data=http.request("http://hroch.spseol.cz:44822/game/" .. botID)	--result, state code, content
+	local lenres=string.len(res)
+	if lenres==string.len(oldRes) then
+	
+		for i=1,lenres do
+			if string.sub(res,i,i)~=string.sub(oldRes,i,i) then
+				oldRes=res
+				AD=decode(res)
+				--drawMap()
+				updating=true
+				break
+			end
+			--love.draw()
+		end
+	
+	else
+	
+		oldRes=res
+		AD=decode(res)
+		--drawMap()
+		updating=true
+		
+	end
+
+end
+
 ----------------------UPDATE--------------------------------
 
 function love.update(dt)
@@ -353,7 +387,12 @@ function love.update(dt)
 		addy=(love.mouse.getY()-dragy)/scale
 	end
 	
-
+	--if tim>updateTim then
+	--	updateTim=tim+1
+	--	check()
+	--	update()
+	--	drawMap()
+	--end
 
 end
 
@@ -366,8 +405,10 @@ function love.keypressed(key)
 	elseif key=="tab" then
 		control=not control
 	elseif key=="f1" then
+		help=not help
+	elseif key=="f5" then
 		centerOnBot=true
-	elseif key=="f2" then
+	elseif key=="f6" then
 		oaddx=tileSize*botLOC[1]
 		oaddy=tileSize*botLOC[2]
 		addx=0
@@ -396,20 +437,15 @@ function love.keyreleased(key)
 end
 
 function love.mousepressed( x, y, mb )
-   if mb == "wd" then
-      scale=scale-scale/10
-   elseif mb == "wu" then
-      scale=scale+scale/10
-      if scale>1 then scale=1 end
-   elseif mb=="l" then
-	dragx=x
-	dragy=y
-	drag=true
-   end
+	if mb==1 then
+		dragx=x
+		dragy=y
+		drag=true
+	end
 end
 
 function love.mousereleased( x, y, mb )
-	if mb=="l" then
+	if mb==1 then
 		oaddx=oaddx-addx
 		oaddy=oaddy-addy
 		addx=0
@@ -418,11 +454,21 @@ function love.mousereleased( x, y, mb )
 	end
 end
 
+function love.wheelmoved(x,y)
+	if y>0 then
+		scale=scale-(scale/10)*(-y)
+		if scale>1 then scale=1 end
+	elseif y<0 then
+		scale=scale+(scale/10)*(y)
+	end
+end
+
 ----------------------DRAW----------------------
 
 function love.draw()
 	
-	if won==nil then
+	
+	if not won then
 		
 		
 		if not centerOnBot then
@@ -443,9 +489,26 @@ function love.draw()
 		love.graphics.print("you have lost",50,50)
 	end
 	
+	if help then
+		love.graphics.setColor(colors["UNDERLAY"])
+		
+		love.graphics.rectangle("fill",0,0,width,height)
+		
+		love.graphics.setFont(fonts["HELP"])
+		love.graphics.setColor(colors["HELP"])
+		
+		love.graphics.print("F1 - show/hide this help screen\nF3 - show/hide debug screen\nF5 - center view on bot\nF6 - in this mode map can me moved (left mouse button+drag)\nF11 - toggle fullscreen\nmouse wheel - scroll in/out\n\narrow up - step\narrow left - turn_left\narrow right - turn_right\nspace - laser_beam (not tested)\nreturn - wait (not tested)",10,10)
+		
+		debugStuff=""
+	end
+	
 	if debug then
-		love.graphics.setFont(debugFont)
-		love.graphics.setColor(colorDebug)
+		love.graphics.setColor(colors["UNDERLAY"])
+		
+		love.graphics.rectangle("fill",0,0,width,height)
+		
+		love.graphics.setFont(fonts["DEBUG"])
+		love.graphics.setColor(colors["DEBUG"])
 	
 		--table.insert(debugStuff,string.format("control: %s",control))
 		--table.insert(debugStuff,string.format("centerOnBot: %s",centerOnBot))
@@ -468,7 +531,8 @@ function love.draw()
 		love.graphics.print(debugStuff,10,-20)
 		
 		debugStuff=""
-		love.graphics.setColor(colorWhite)
 	end
+	
+	love.graphics.setColor(colors["DEFAULT"])
 
 end
