@@ -1,5 +1,6 @@
 function love.load()
 	http=require("socket.http")
+	serverAddr="http://hroch.spseol.cz:44822"
 	
 	--screen
 	fullscreen=false
@@ -51,14 +52,14 @@ function love.load()
 	control=true
 	centerOnBot=true
 	
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/init")	--result, state code, content
+	res,sc,data=http.request(serverAddr .. "/init")	--result, state code, content
 	res=decode(res)
 	
 	botID=res["bot_id"]
 	--botID="149294806402758316987601636401142037943"
 	
 	
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/game/" .. botID)	--result, state code, content
+	res,sc,data=http.request(serverAddr .. "/game/" .. botID)	--result, state code, content
 	oldRes=res		--old data (form of original JSON)
 	AD=decode(res)	--actualData
 	
@@ -260,7 +261,7 @@ end
 
 function FWD()
 	--SEND "STEP"
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/action","bot_id=" .. botID .. "&action=step")
+	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
 	--rememberres=res
 	if res=="game_won" then
 		WON=true
@@ -273,32 +274,32 @@ end
 
 function LEFT()
 	--SEND "TURN_LEFT"
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/action","bot_id=" .. botID .. "&action=turn_left")
+	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_left")
 	update()
 end
 
 function RIGHT()
 	--SEND "TURN_RIGHT"
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/action","bot_id=" .. botID .. "&action=turn_right")
+	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_right")
 	update()
 end
 
 function LASER()
 	--SEND "LASER_BEAM"
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/action","bot_id=" .. botID .. "&action=laser_beam")
+	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=laser_beam")
 	update()
 end
 
 function WAIT()
 	--SEND "WAIT"
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/action","bot_id=" .. botID .. "&action=wait")
+	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=wait")
 	update()
 end
 
 
 function update()
 
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/game/" .. botID)	--result, state code, content
+	res,sc,data=http.request(serverAddr .. "/game/" .. botID)	--result, state code, content
 	AD=decode(res)	--actualData
 	drawMap()
 
@@ -336,34 +337,6 @@ function drawMap()
 	--end
 end
 
-function check()
-
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/game/" .. botID)	--result, state code, content
-	local lenres=string.len(res)
-	if lenres==string.len(oldRes) then
-	
-		for i=1,lenres do
-			if string.sub(res,i,i)~=string.sub(oldRes,i,i) then
-				oldRes=res
-				AD=decode(res)
-				--drawMap()
-				updating=true
-				break
-			end
-			--love.draw()
-		end
-	
-	else
-	
-		oldRes=res
-		AD=decode(res)
-		--drawMap()
-		updating=true
-		
-	end
-
-end
-
 ----------------------UPDATE--------------------------------
 
 function love.update(dt)
@@ -380,12 +353,7 @@ function love.update(dt)
 		addy=(love.mouse.getY()-dragy)/scale
 	end
 	
-	--if tim>updateTim then
-	--	updateTim=tim+1
-	--	check()
-	--	update()
-	--	drawMap()
-	--end
+
 
 end
 
@@ -405,6 +373,8 @@ function love.keypressed(key)
 		addx=0
 		addy=0
 		centerOnBot=false
+	elseif key=="f3" then
+		debug=not debug
 	elseif key=="f11" then
 		fullscreenSwitch()
 	elseif key=="up" then
