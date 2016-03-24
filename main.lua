@@ -153,33 +153,33 @@ end
 
 
 function FWD()
-	--SEND "STEP"
-	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
-	if robot["HDG"]==0 then
+					--SEND "STEP"
+					--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
+	--[[if robot["HDG"]==0 then
 		local target=map[ robot["X"] ][ robot["Y"]-1 ]
 		if target==2 or target==3 or target==4 then
 			return "cannot move"
 		end
-		--robot["Y"]=robot["Y"]-1
+						--robot["Y"]=robot["Y"]-1
 	elseif robot["HDG"]==1 then
 		local target=map[ robot["X"]+1 ][ robot["Y"] ]
 		if target==2 or target==3 or target==4 then
 			return "cannot move"
 		end
-		--robot["X"]=robot["X"]+1
+						--robot["X"]=robot["X"]+1
 	elseif robot["HDG"]==2 then
 		local target=map[ robot["X"] ][ robot["Y"]+1 ]
 		if target==2 or target==3 or target==4 then
 			return "cannot move"
 		end
-		--robot["Y"]=robot["Y"]+1
+						--robot["Y"]=robot["Y"]+1
 	elseif robot["HDG"]==3 then
 		local target=map[ robot["X"]-1 ][ robot["Y"] ]
 		if target==2 or target==3 or target==4 then
 			return "cannot move"
 		end
-		--robot["X"]=robot["X"]-1
-	end
+					--robot["X"]=robot["X"]-1
+	end]]
 	
 		updateCounter=2
 		
@@ -188,9 +188,9 @@ function FWD()
 		actionChannel:push("bot_id=" .. botID .. "&action=step")
 		actionThread:start()
 		
-		smoothMoving=true
-		--smoothTime=STmax
-	--rememberres=res
+		--smoothMoving=true
+					--smoothTime=STmax
+				--rememberres=res
 end
 
 function LEFT()
@@ -204,7 +204,7 @@ function LEFT()
 	actionChannel:push("bot_id=" .. botID .. "&action=turn_left")
 	actionThread:start()
 	
-	smoothTurning=-1
+	--smoothTurning=-1
 		--smoothTime=STmax
 end
 
@@ -219,7 +219,7 @@ function RIGHT()
 	actionChannel:push("bot_id=" .. botID .. "&action=turn_right")
 	actionThread:start()
 	
-	smoothTurning=1
+--	smoothTurning=1
 
 		--smoothTime=STmax
 end
