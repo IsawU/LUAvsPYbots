@@ -9,6 +9,7 @@ function love.load()
 	
 	tileSize=80
 	
+	--love.window.setTitle("LUA vs PYbots")
 	scale=1
 	
 	--assets
@@ -34,6 +35,12 @@ function love.load()
 	tiles[4]=love.graphics.newImage(TAP .. "floor.png")		--baterry_bot ???
 	
 	
+	actionThread=love.thread.newThread("action.lua")
+	actionChannel=love.thread.getChannel("actionChannel")
+	
+	decoderThread=love.thread.newThread("decode.lua")
+	decoderChannel=love.thread.getChannel("decoderChannel")
+		
 	fonts={}
 	fonts["DEBUG"]=love.graphics.newFont(20)
 	fonts["HELP"]=love.graphics.newFont(20)
@@ -44,70 +51,9 @@ function love.load()
 	colors["UNDERLAY"]={255,255,255,128}
 	
 	--vars
-	WON=nil
+	won=nil
 	tim=0
 	updateTim=1
-	debug=false
-	--debug=false
-	debugStuff=""
-	
-	help=true
-	
-	drag=false
-	
-	control=true
-	centerOnBot=true
-	
-	res,sc,data=http.request(serverAddr .. "/init")	--result, state code, content
-	res=decode(res)
-	
-	botID=res["bot_id"]
-	--botID="149294806402758316987601636401142037943"
-	
-	
-	res,sc,data=http.request(serverAddr .."/game/" .. botID)	--result, state code, content
-	oldRes=res		--old data (form of original JSON)
-	AD=decode(res)	--actualData
-	
-	batON=true
-	if AD["game_info"]["battery_game"]=="false" then
-		batON=false
-	end
-	
-	laserON=true
-	if AD["game_info"]["laser_game"]=="false" then
-		batON=false
-	end
-	
-	gameHeight=AD["game_info"]["map_resolutions"]["height"]+0
-	gameWidth=AD["game_info"]["map_resolutions"]["width"]+0
-	
-	mapCanvas=love.graphics.newCanvas(80*gameWidth,80*gameHeight)
-	
-	botLOC={0,0}	--bot location
-	botHDG=0
-	
-	for y=1,gameHeight do
-		
-		for x=1,gameWidth do
-		
-			if AD["map"][y][x]["your_bot"]=="true" then
-				botLOC={x,y}
-				--botHDG=AD["map"][y][x]["orientation"]+0
-				botNAME=AD["map"][y][x]["name"]
-			end
-		
-		end
-		
-	end
-	
-	--gameMap={}
-	--for x=1,gameWidth do
-	--	gameMap[x]={}
-	--end
-	
-	update()
-	drawMap()
 	
 	printx=0
 	printy=0
@@ -115,6 +61,75 @@ function love.load()
 	addy=0
 	oaddx=0
 	oaddy=0
+	
+	updateCounter=0
+	smoothTime=STmax
+	
+	debug=true
+	--debug=false
+	debugStuff=""
+	
+	help=false
+	drag=false
+	
+	control=true
+	centerOnBot=true
+	
+	smoothMoving=false
+	smoothTurning=0
+	
+	smoothBotRot=0
+	robotsmoothx=0
+	robotsmoothy=0
+	
+	
+	smoothTime=1
+	
+	--defaults
+	OLDsize={}
+	OLDsize["W"]=10
+	OLDsize["H"]=10
+	robot={}
+	robot["X"]=0
+	robot["Y"]=0
+	robot["HDG"]=0
+	robot["NAME"]="failure"
+	robot["BAT"]=0
+	robots={}
+	map={}
+	for x=1,OLDsize["W"] do
+		map[x]={}
+		for y=1,OLDsize["H"] do
+			map[x][y]=0
+		end
+	end
+	info={}
+	info["BAT"]=false
+	info["LASER"]=false
+	info["TURNS"]=false
+	
+	
+	--print("YEAH")
+	
+	decoderChannel:clear()
+	decoderChannel:push(serverAddr .. "/init")
+	decoderThread:start()
+	decoderThread:wait()
+	res=decoderChannel:pop()
+	
+	
+	botID=res
+	--print("ID: " .. botID)
+	--botID="149294806402758316987601636401142037943"
+	--botID="160766468451547732226603809402618484943"
+	
+	
+	decoderChannel:clear()
+	decoderChannel:push(serverAddr .. "/game/" .. botID)	
+	decoderThread:start()
+	decoderThread:wait()
+	
+	update()
 		
 end
 
@@ -136,239 +151,237 @@ function debugStuffADD(addstr)
 end
 
 
-	-------------------JSONtoolkit------------------ (call decode)
-	function removeBorders(str)
-
-		return string.sub(str,2,string.len(str)-1)
-
-	end
-
-	function decode(str)	--pilot function for decode
-
-		str=removeBorders(str)
-		local DecodeTab={}
-		--print("1",DecodeTab)
-		decod2(str,DecodeTab)
-		--print("2",DecodeTab)
-		return DecodeTab
-
-	end
-
-	function decod2(str,target)
-
-		--print(target)
-
-		local ss=nil
-		local se=nil
-		
-		local name=nil
-		
-		local len=string.len(str)+1
-		local char=nil
-		local number=false
-		
-		local i=1	
-		--for i=1,len do
-		while i<len do
-		
-			char=string.sub(str,i,i)
-			--print("char=" .. char,"\ti=" .. i)
-			
-			
-			
-			if number and (not string.find(char,"%d")) then
-				number=false
-				se=i
-			end
-			
-			
-			
-			
-			if ss and se then	--zacatek i konec retezce
-				--print("\tSS SE")
-				--print(string.sub(str,1,i),i)
-				if char==":" then
-					--print("\t!name")
-					name=string.sub(str,ss+1,se-1)
-					--print("\t\tname<" .. name)
-					
-				else
-					if not name then --name is nil
-						--print("\t!data w/o name")
-						--print("\t\tdata<" .. string.sub(str,ss+1,se-1))
-						table.insert(target,string.sub(str,ss+1,se-1))
-					else
-						--print("\t!data w/ name")
-						target[name]=string.sub(str,ss+1,se-1)
-						--print("\t\t@" .. name .. "<" .. string.sub(str,ss+1,se-1))
-					end
-					name=nil
-				end
-				ss=nil
-				se=nil
-			else				
-				--print("\tELSE")
-				if char==[["]] then
-					if ss then
-						se=i
-					else
-						ss=i
-					end
-				elseif string.find(char,"%d") and not ss then
-					number=true
-					--print("number")
-					if not ss then
-						ss=i-1
-					end
-				elseif char=="f" and not ss then
-					if string.sub(str,i,i+4)=="false" then
-						ss=i-1
-						se=i+5
-					end
-				elseif char=="t" and not ss then
-					if string.sub(str,i,i+3)=="true" then
-						ss=i-1
-						se=i+4
-					end
-				elseif char=="{" or char=="[" then
-					--print(name==nil)
-					if not name then
-						local tlen=#target+1
-						--target[tlen]=decode(string.sub(str,i+1))
-						target[tlen]={}
-						--print("\ttarget<" .. "NONAME")
-						i=i+decod2(string.sub(str,i+1),target[tlen])
-					else
-						--target[name]=decode(string.sub(str,i+1))
-						target[name]={}
-						--print("\ttarget<" .. name)
-						i=i+decod2(string.sub(str,i+1),target[name])
-					end
-					name=nil
-				elseif char=="}" or char=="]" then
-					--print("i " .. unpack(i))
-					return i
-				end
-			end
-			--print("\ti> " .. i)
-			i=i+1
-		end
-		
-		--print()
-		--print(target)
-		--return {unpack(target)}
-		--return target
-		return i
-
-	end
-
-	-----------------------------------------------------------
-
 
 function FWD()
 	--SEND "STEP"
-	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=step")
-	--rememberres=res
-	if res=="game_won" then
-		WON=true
-	elseif res=="game_lost" then
-		WON=false
-	else
-		update()
+	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
+	if robot["HDG"]==0 then
+		local target=map[ robot["X"] ][ robot["Y"]-1 ]
+		if target==2 or target==3 or target==4 then
+			return "cannot move"
+		end
+		--robot["Y"]=robot["Y"]-1
+	elseif robot["HDG"]==1 then
+		local target=map[ robot["X"]+1 ][ robot["Y"] ]
+		if target==2 or target==3 or target==4 then
+			return "cannot move"
+		end
+		--robot["X"]=robot["X"]+1
+	elseif robot["HDG"]==2 then
+		local target=map[ robot["X"] ][ robot["Y"]+1 ]
+		if target==2 or target==3 or target==4 then
+			return "cannot move"
+		end
+		--robot["Y"]=robot["Y"]+1
+	elseif robot["HDG"]==3 then
+		local target=map[ robot["X"]-1 ][ robot["Y"] ]
+		if target==2 or target==3 or target==4 then
+			return "cannot move"
+		end
+		--robot["X"]=robot["X"]-1
 	end
+	
+		updateCounter=2
+		
+		actionChannel:clear()
+		actionChannel:push(serverAddr .. "/action")
+		actionChannel:push("bot_id=" .. botID .. "&action=step")
+		actionThread:start()
+		
+		smoothMoving=true
+		--smoothTime=STmax
+	--rememberres=res
 end
 
 function LEFT()
 	--SEND "TURN_LEFT"
-	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=turn_left")
-	update()
+	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_left")
+	
+		updateCounter=2
+		
+	actionChannel:clear()
+	actionChannel:push(serverAddr .. "/action")
+	actionChannel:push("bot_id=" .. botID .. "&action=turn_left")
+	actionThread:start()
+	
+	smoothTurning=-1
+		--smoothTime=STmax
 end
 
 function RIGHT()
 	--SEND "TURN_RIGHT"
-	res,sc,data=http.request(serverAddr .."/action","bot_id=" .. botID .. "&action=turn_right")
-	update()
+	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_right")
+		
+		updateCounter=2
+		
+	actionChannel:clear()
+	actionChannel:push(serverAddr .. "/action")
+	actionChannel:push("bot_id=" .. botID .. "&action=turn_right")
+	actionThread:start()
+	
+	smoothTurning=1
+
+		--smoothTime=STmax
 end
 
 function LASER()
 	--SEND "LASER_BEAM"
-	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=laser_beam")
-	update()
+	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=laser_beam")
+	if info["LASER"] then
+			
+		actionChannel:clear()
+		actionChannel:push(serverAddr .. "/action")
+		actionChannel:push("bot_id=" .. botID .. "&action=laser_beam")
+		actionThread:start()
+		
+	end
+
 end
 
 function WAIT()
 	--SEND "WAIT"
-	res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=wait")
-	update()
+	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=wait")
+	
+	actionChannel:clear()
+	actionChannel:push(serverAddr .. "/action")
+	actionChannel:push("bot_id=" .. botID .. "&action=wait")
+	actionThread:start()
+
 end
+
 
 
 function update()
 
-	res,sc,data=http.request( serverAddr .."/game/" .. botID)	--result, state code, content
-	AD=decode(res)	--actualData
-	drawMap()
+	if not decoderThread:isRunning() then
+		--read
+		if updateCounter>0 then updateCounter=updateCounter-1 end
+		
+		size=decoderChannel:pop()
+		
+		if size~=nil then
+			if size["W"]~=nil and size["H"]~=nil then
+				OLDsize=size
+				map={}
+				for x=1,size["W"]+0 do
+					map[x]=decoderChannel:pop()
+				end
+				
+				local OLDrobot=robot
+				robot=decoderChannel:pop()
+				--print(robot)
+				
+				--print("name: " .. robot["NAME"],"HDG: " .. robot["HDG"],"X,Y: " .. robot["X"],robot["Y"])
+				
+				local robotsn=decoderChannel:pop()
+				robots={}
+				for i=1,robotsn do
+					table.insert(robots,decoderChannel:pop())
+				end
+				
+				info=decoderChannel:pop()
+
+				decoderChannel:clear()
+				decoderChannel:push(serverAddr .. "/game/" .. botID)	
+				decoderThread:start()
+				
+				--print(robot)
+				if OLDrobot["X"]~=robot["X"] or OLDrobot["Y"]~=robot["Y"] then
+					
+					robotsmoothx=0
+					robotsmoothy=0
+					
+					smoothMoving=false
+				end
+				if OLDrobot["HDG"]~=robot["HDG"] then
+					
+					smoothBotRot=0
+					
+					smoothTurning=0
+				end
+			else
+				size=OLDsize
+			end
+		else
+				size=OLDsize
+		end
+		
+	end
 
 end
 
 function drawMap()
-	--if gameMap then
-	love.graphics.setCanvas(mapCanvas)
-	love.graphics.clear(0,0,0,0)
-		for x=1,gameWidth do
-			
-			for y=1,gameHeight do
-			
-				love.graphics.draw(tiles[AD["map"][y][x]["field"]+0],       80*x-80,80*y-80         )
-				if AD["map"][y][x]["field"]+0==2 then
-					if AD["map"][y][x]["your_bot"]=="true" then	--is normal game
-						love.graphics.draw(myrobots[AD["map"][y][x]["orientation"]+0],       80*x-80,80*y-80         )
-						botLOC={x,y}
-					else
-						love.graphics.draw(urrobots[AD["map"][y][x]["orientation"]+0],       80*x-80,80*y-80         )
-					end
-				elseif AD["map"][y][x]["field"]+0==4 then			--iz batterry game
-					if AD["map"][y][x]["your_bot"]=="true" then
-						love.graphics.draw(myrobots[AD["map"][y][x]["orientation"]+0],       80*x-80,80*y-80         )
-						botLOC={x,y}
-					else
-						love.graphics.draw(urrobots[AD["map"][y][x]["orientation"]+0],       80*x-80,80*y-80         )
-					end
-				end
-			
+
+	for x=1,size["W"] do
+		for y=1,size["H"] do
+			if not centerOnBot then
+				--printx=0-((((tileSize*botLOC[1]-addx))*2*scale-width-tileSize*scale)/2)
+				--printy=0-((((tileSize*botLOC[2]-addy))*2*scale-height-tileSize*scale)/2)
+				printx=0-((((oaddx-addx))*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
+				printy=0-((((oaddy-addy))*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
+				printxr=printx+robotsmoothx*scale
+				printyr=printy+robotsmoothy*scale
+			else
+				printx=0-((tileSize*robot["X"]*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
+				printy=0-((tileSize*robot["Y"]*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
+				printxr=printx
+				printyr=printy
+				printx=printx-robotsmoothx*scale
+				printy=printy-robotsmoothy*scale
 			end
+		
+			love.graphics.draw(tiles[map[x][y]],printx,printy,0,scale,scale)
 			
+			--if robot["X"]==x and robot["Y"]==y then
+			--	love.graphics.draw(myrobots[robot["HDG"]],printxr,printyr,0,scale,scale)
+			--end
 		end
-	love.graphics.setCanvas()
-	--end
+	end
+	
+	
+
 end
 
-function check()	--inused
+function drawRobots()
 
-	res,sc,data=http.request("http://hroch.spseol.cz:44822/game/" .. botID)	--result, state code, content
-	local lenres=string.len(res)
-	if lenres==string.len(oldRes) then
-	
-		for i=1,lenres do
-			if string.sub(res,i,i)~=string.sub(oldRes,i,i) then
-				oldRes=res
-				AD=decode(res)
-				--drawMap()
-				updating=true
-				break
+	for x=1,size["W"] do
+		for y=1,size["H"] do
+			if not centerOnBot then
+				--printx=0-((((tileSize*botLOC[1]-addx))*2*scale-width-tileSize*scale)/2)
+				--printy=0-((((tileSize*botLOC[2]-addy))*2*scale-height-tileSize*scale)/2)
+				printx=0-((((oaddx-addx))*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
+				printy=0-((((oaddy-addy))*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
+				printxr=printx+robotsmoothx*scale
+				printyr=printy+robotsmoothy*scale
+			else
+				printx=0-((tileSize*robot["X"]*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
+				printy=0-((tileSize*robot["Y"]*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
+				printxr=printx
+				printyr=printy
+				printx=printx-robotsmoothx*scale
+				printy=printy-robotsmoothy*scale
 			end
-			--love.draw()
-		end
-	
-	else
-	
-		oldRes=res
-		AD=decode(res)
-		--drawMap()
-		updating=true
 		
+			for i=1,#robots do
+				if x==robots[i]["X"]+0 and y==robots[i]["Y"]+0 then
+					love.graphics.draw(urrobots[robots[i]["HDG"]],printx,printy,0,scale,scale)
+				end
+			end
+			
+			if robot["X"]==x and robot["Y"]==y then
+				
+				love.graphics.translate(printxr+((tileSize*scale)/2),printyr+((tileSize*scale)/2))
+				
+				love.graphics.rotate(math.rad(smoothBotRot))
+				
+				love.graphics.draw(myrobots[robot["HDG"]],-((tileSize*scale)/2),-((tileSize*scale)/2),0,scale,scale)
+				
+				--love.graphics.rotate(math.rad(-smoothBotRot))
+				love.graphics.origin()
+			end
+		end
 	end
-
+	
 end
 
 ----------------------UPDATE--------------------------------
@@ -377,23 +390,52 @@ function love.update(dt)
 	
 	tim=tim+dt
 	if drag then
-		--if oaddx or oaddy then
-		--	dragx=(dragx-oaddx*scale)
-		--	dragy=(dragy-oaddy*scale)
-		--	oaddx=0
-		--	oaddy=0
-		--end
 		addx=(love.mouse.getX()-dragx)/scale
 		addy=(love.mouse.getY()-dragy)/scale
 	end
 	
-	--if tim>updateTim then
-	--	updateTim=tim+1
-	--	check()
-	--	update()
-	--	drawMap()
-	--end
-
+	if smoothMoving then
+		if robot["HDG"]==0 then
+			robotsmoothy=robotsmoothy-((dt/smoothTime)*tileSize)
+			robotsmoothx=0
+		elseif robot["HDG"]==1 then
+			robotsmoothx=robotsmoothx+((dt/smoothTime)*tileSize)
+			robotsmoothy=0
+		elseif robot["HDG"]==2 then
+			robotsmoothy=robotsmoothy+((dt/smoothTime)*tileSize)
+			robotsmoothx=0
+		elseif robot["HDG"]==3 then
+			robotsmoothx=robotsmoothx-((dt/smoothTime)*tileSize)
+			robotsmoothy=0
+		end
+		
+		if robotsmoothx>tileSize then
+			robotsmoothx=tileSize
+		end
+		
+		if robotsmoothy>tileSize then
+			robotsmoothy=tileSize
+		end
+		
+		if robotsmoothx<-tileSize then
+			robotsmoothx=-tileSize
+		end
+		
+		if robotsmoothy<-tileSize then
+			robotsmoothy=-tileSize
+		end
+	end
+	
+	if smoothTurning==1 then
+		smoothBotRot=smoothBotRot+(dt/smoothTime)*90
+		if smoothBotRot>90 then smoothBotRot=90 end
+	elseif smoothTurning==-1 then
+		smoothBotRot=smoothBotRot-(dt/smoothTime)*90
+		if smoothBotRot<-90 then smoothBotRot=-90 end
+	end
+	
+	update()
+	
 end
 
 ------------------------INPUT-------------------
@@ -409,8 +451,8 @@ function love.keypressed(key)
 	elseif key=="f5" then
 		centerOnBot=true
 	elseif key=="f6" then
-		oaddx=tileSize*botLOC[1]
-		oaddy=tileSize*botLOC[2]
+		oaddx=tileSize*robot["X"]
+		oaddy=tileSize*robot["Y"]
 		addx=0
 		addy=0
 		centerOnBot=false
@@ -418,16 +460,22 @@ function love.keypressed(key)
 		debug=not debug
 	elseif key=="f11" then
 		fullscreenSwitch()
-	elseif key=="up" then
-		FWD()
-	elseif key=="left" then
-		LEFT() 
-	elseif key=="right" then
-		RIGHT()
-	elseif key=="space" then
-		LASER()
-	elseif key=="return" then
-		WAIT()
+	end
+		
+	if updateCounter==0 then
+	
+		if key=="up" then
+			FWD()
+		elseif key=="left" then
+			LEFT() 
+		elseif key=="right" then
+			RIGHT()
+		elseif key=="space" then
+			LASER()
+		elseif key=="return" then
+			WAIT()
+		end
+		
 	end
 
 end
@@ -436,7 +484,7 @@ function love.keyreleased(key)
 
 end
 
-function love.mousepressed( x, y, mb )
+function love.mousepressed(x,y,mb)
 	if mb==1 then
 		dragx=x
 		dragy=y
@@ -444,7 +492,7 @@ function love.mousepressed( x, y, mb )
 	end
 end
 
-function love.mousereleased( x, y, mb )
+function love.mousereleased(x,y,mb)
 	if mb==1 then
 		oaddx=oaddx-addx
 		oaddy=oaddy-addy
@@ -468,26 +516,11 @@ end
 function love.draw()
 	
 	
-	if not won then
-		
-		
-		if not centerOnBot then
-			--printx=0-((((tileSize*botLOC[1]-addx))*2*scale-width-tileSize*scale)/2)
-			--printy=0-((((tileSize*botLOC[2]-addy))*2*scale-height-tileSize*scale)/2)
-			printx=0-((((oaddx-addx))*2*scale-width-tileSize*scale)/2)
-			printy=0-((((oaddy-addy))*2*scale-height-tileSize*scale)/2)
-		else
-			printx=0-((tileSize*botLOC[1]*2*scale-width-tileSize*scale)/2)
-			printy=0-((tileSize*botLOC[2]*2*scale-height-tileSize*scale)/2)
-		end
-		
-		love.graphics.draw(mapCanvas,printx,printy,0,scale,scale)
+	drawMap()
+	drawRobots()
 	
-	elseif won then
-		love.graphics.print("you have won",50,50)
-	else
-		love.graphics.print("you have lost",50,50)
-	end
+	
+	
 	
 	if help then
 		love.graphics.setColor(colors["UNDERLAY"])
@@ -517,16 +550,16 @@ function love.draw()
 		
 		debugStuffADD(string.format("control: %s",control))
 		debugStuffADD(string.format("centerOnBot: %s",centerOnBot))
-		debugStuffADD(string.format("botID: %s",botID))
-		debugStuffADD(string.format("batON: %s",batON))
-		debugStuffADD(string.format("gameHeight: %s",gameHeight))
-		debugStuffADD(string.format("gameWidth: %s",gameWidth))
 		
-		debugStuffADD(string.format("botLOC: %d, %d",botLOC[1],botLOC[2]))
-		debugStuffADD(string.format("botHDG: %d",botHDG))
-		debugStuffADD(string.format("botNAME: %s",botNAME))
 		
 		debugStuffADD(string.format("FPS: %s",love.timer.getFPS()))
+		
+		
+		debugStuffADD(string.format("X: %s Y: %s",robot["X"],robot["Y"]))
+		debugStuffADD(string.format("HDG: %s",robot["HDG"]))
+		debugStuffADD(string.format("updatecounter: %s",updateCounter))
+		debugStuffADD(string.format("SBR: %s",smoothBotRot))
+		
 		
 		love.graphics.print(debugStuff,10,-20)
 		
