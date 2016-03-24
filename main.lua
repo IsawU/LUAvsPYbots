@@ -35,13 +35,22 @@ function love.load()
 	tiles[4]=love.graphics.newImage(TAP .. "floor.png")		--baterry_bot ???
 	
 	
-	actionThread=love.thread.newThread("action.lua")
-	actionChannel=love.thread.getChannel("actionChannel")
+	actionThreads={}
+	actionThreads[1]=love.thread.newThread("action.lua")
+	--actionChannels={}
+	--actionChannels[1]=love.thread.getChannel("actionChannel")
+	
+	actionThread=actionThreads[1]
+	--actionChannel=actionChannels[1]
+	
+	victoryChannel=love.thread.getChannel("victoryChannel")
 	
 	decoderThread=love.thread.newThread("decode.lua")
 	decoderChannel=love.thread.getChannel("decoderChannel")
 		
 	fonts={}
+	fonts["DEFAULT"]=love.graphics.newFont(12)
+	fonts["VICTORY"]=love.graphics.newFont(50)
 	fonts["DEBUG"]=love.graphics.newFont(20)
 	fonts["HELP"]=love.graphics.newFont(20)
 	colors={}
@@ -63,7 +72,6 @@ function love.load()
 	oaddy=0
 	
 	updateCounter=0
-	smoothTime=STmax
 	
 	debug=true
 	--debug=false
@@ -75,15 +83,6 @@ function love.load()
 	control=true
 	centerOnBot=true
 	
-	smoothMoving=false
-	smoothTurning=0
-	
-	smoothBotRot=0
-	robotsmoothx=0
-	robotsmoothy=0
-	
-	
-	smoothTime=1
 	
 	--defaults
 	OLDsize={}
@@ -152,6 +151,23 @@ end
 
 
 
+function selectActionThread()
+
+	--print("selecting...")
+
+	for i=1,#actionThreads do
+	
+		if not actionThreads[i]:isRunning() then
+			return actionThreads[i]--,actionChannels[i]
+		end
+	
+	end
+	
+	table.insert(actionThreads,love.thread.newThread("action.lua"))
+	return actionThreads[#actionThreads]
+
+end
+
 function FWD()
 					--SEND "STEP"
 					--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
@@ -183,10 +199,12 @@ function FWD()
 	
 		updateCounter=2
 		
-		actionChannel:clear()
-		actionChannel:push(serverAddr .. "/action")
-		actionChannel:push("bot_id=" .. botID .. "&action=step")
-		actionThread:start()
+		actionThread=selectActionThread()
+		
+		--actionChannel:clear()
+		--actionChannel:push(serverAddr .. "/action")
+		--actionChannel:push("bot_id=" .. botID .. "&action=step")
+		actionThread:start(serverAddr .. "/action","bot_id=" .. botID .. "&action=step")
 		
 		--smoothMoving=true
 					--smoothTime=STmax
@@ -199,10 +217,12 @@ function LEFT()
 	
 		updateCounter=2
 		
-	actionChannel:clear()
-	actionChannel:push(serverAddr .. "/action")
-	actionChannel:push("bot_id=" .. botID .. "&action=turn_left")
-	actionThread:start()
+		actionThread=selectActionThread()
+		
+	--actionChannel:clear()
+	--actionChannel:push(serverAddr .. "/action")
+	--actionChannel:push("bot_id=" .. botID .. "&action=turn_left")
+	actionThread:start(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_left")
 	
 	--smoothTurning=-1
 		--smoothTime=STmax
@@ -214,10 +234,12 @@ function RIGHT()
 		
 		updateCounter=2
 		
-	actionChannel:clear()
-	actionChannel:push(serverAddr .. "/action")
-	actionChannel:push("bot_id=" .. botID .. "&action=turn_right")
-	actionThread:start()
+		actionThread=selectActionThread()
+		
+	--actionChannel:clear()
+	--actionChannel:push(serverAddr .. "/action")
+	--actionChannel:push("bot_id=" .. botID .. "&action=turn_right")
+	actionThread:start(serverAddr .. "/action","bot_id=" .. botID .. "&action=turn_right")
 	
 --	smoothTurning=1
 
@@ -229,10 +251,10 @@ function LASER()
 	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=laser_beam")
 	if info["LASER"] then
 			
-		actionChannel:clear()
-		actionChannel:push(serverAddr .. "/action")
-		actionChannel:push("bot_id=" .. botID .. "&action=laser_beam")
-		actionThread:start()
+		--actionChannel:clear()
+		--actionChannel:push(serverAddr .. "/action")
+		--actionChannel:push("bot_id=" .. botID .. "&action=laser_beam")
+		actionThread:start(serverAddr .. "/action","bot_id=" .. botID .. "&action=laser_beam")
 		
 	end
 
@@ -242,10 +264,10 @@ function WAIT()
 	--SEND "WAIT"
 	--local res,sc,data=http.request(serverAddr .. "/action","bot_id=" .. botID .. "&action=wait")
 	
-	actionChannel:clear()
-	actionChannel:push(serverAddr .. "/action")
-	actionChannel:push("bot_id=" .. botID .. "&action=wait")
-	actionThread:start()
+	--actionChannel:clear()
+	--actionChannel:push(serverAddr .. "/action")
+	--actionChannel:push("bot_id=" .. botID .. "&action=wait")
+	actionThread:start(serverAddr .. "/action","bot_id=" .. botID .. "&action=wait")
 
 end
 
@@ -269,6 +291,12 @@ function update()
 				
 				local OLDrobot=robot
 				robot=decoderChannel:pop()
+				if not robot["X"] then
+					robot=OLDrobot
+				end
+				if not robot["Y"] then
+					robot=OLDrobot
+				end
 				--print(robot)
 				
 				--print("name: " .. robot["NAME"],"HDG: " .. robot["HDG"],"X,Y: " .. robot["X"],robot["Y"])
@@ -286,7 +314,7 @@ function update()
 				decoderThread:start()
 				
 				--print(robot)
-				if OLDrobot["X"]~=robot["X"] or OLDrobot["Y"]~=robot["Y"] then
+				--[[if OLDrobot["X"]~=robot["X"] or OLDrobot["Y"]~=robot["Y"] then
 					
 					robotsmoothx=0
 					robotsmoothy=0
@@ -298,7 +326,7 @@ function update()
 					smoothBotRot=0
 					
 					smoothTurning=0
-				end
+				end]]
 			else
 				size=OLDsize
 			end
@@ -319,15 +347,11 @@ function drawMap()
 				--printy=0-((((tileSize*botLOC[2]-addy))*2*scale-height-tileSize*scale)/2)
 				printx=0-((((oaddx-addx))*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
 				printy=0-((((oaddy-addy))*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
-				printxr=printx+robotsmoothx*scale
-				printyr=printy+robotsmoothy*scale
+				
 			else
 				printx=0-((tileSize*robot["X"]*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
 				printy=0-((tileSize*robot["Y"]*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
-				printxr=printx
-				printyr=printy
-				printx=printx-robotsmoothx*scale
-				printy=printy-robotsmoothy*scale
+
 			end
 		
 			love.graphics.draw(tiles[map[x][y]],printx,printy,0,scale,scale)
@@ -351,15 +375,11 @@ function drawRobots()
 				--printy=0-((((tileSize*botLOC[2]-addy))*2*scale-height-tileSize*scale)/2)
 				printx=0-((((oaddx-addx))*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
 				printy=0-((((oaddy-addy))*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
-				printxr=printx+robotsmoothx*scale
-				printyr=printy+robotsmoothy*scale
+				
 			else
 				printx=0-((tileSize*robot["X"]*2*scale-width-tileSize*scale)/2)+((x-1)*tileSize)*scale
 				printy=0-((tileSize*robot["Y"]*2*scale-height-tileSize*scale)/2)+((y-1)*tileSize)*scale
-				printxr=printx
-				printyr=printy
-				printx=printx-robotsmoothx*scale
-				printy=printy-robotsmoothy*scale
+
 			end
 		
 			for i=1,#robots do
@@ -370,14 +390,16 @@ function drawRobots()
 			
 			if robot["X"]==x and robot["Y"]==y then
 				
-				love.graphics.translate(printxr+((tileSize*scale)/2),printyr+((tileSize*scale)/2))
+				--love.graphics.translate(printxr+((tileSize*scale)/2),printyr+((tileSize*scale)/2))
 				
-				love.graphics.rotate(math.rad(smoothBotRot))
+				--love.graphics.rotate(math.rad(smoothBotRot))
 				
-				love.graphics.draw(myrobots[robot["HDG"]],-((tileSize*scale)/2),-((tileSize*scale)/2),0,scale,scale)
+				--love.graphics.draw(myrobots[robot["HDG"]],-((tileSize*scale)/2),-((tileSize*scale)/2),0,scale,scale)
+				
+				love.graphics.draw(myrobots[robot["HDG"]],printx,printy,0,scale,scale)
 				
 				--love.graphics.rotate(math.rad(-smoothBotRot))
-				love.graphics.origin()
+				--love.graphics.origin()
 			end
 		end
 	end
@@ -394,46 +416,10 @@ function love.update(dt)
 		addy=(love.mouse.getY()-dragy)/scale
 	end
 	
-	if smoothMoving then
-		if robot["HDG"]==0 then
-			robotsmoothy=robotsmoothy-((dt/smoothTime)*tileSize)
-			robotsmoothx=0
-		elseif robot["HDG"]==1 then
-			robotsmoothx=robotsmoothx+((dt/smoothTime)*tileSize)
-			robotsmoothy=0
-		elseif robot["HDG"]==2 then
-			robotsmoothy=robotsmoothy+((dt/smoothTime)*tileSize)
-			robotsmoothx=0
-		elseif robot["HDG"]==3 then
-			robotsmoothx=robotsmoothx-((dt/smoothTime)*tileSize)
-			robotsmoothy=0
-		end
-		
-		if robotsmoothx>tileSize then
-			robotsmoothx=tileSize
-		end
-		
-		if robotsmoothy>tileSize then
-			robotsmoothy=tileSize
-		end
-		
-		if robotsmoothx<-tileSize then
-			robotsmoothx=-tileSize
-		end
-		
-		if robotsmoothy<-tileSize then
-			robotsmoothy=-tileSize
-		end
+	if (not victory) and victoryChannel:getCount() then
+		victory=victoryChannel:pop()
 	end
-	
-	if smoothTurning==1 then
-		smoothBotRot=smoothBotRot+(dt/smoothTime)*90
-		if smoothBotRot>90 then smoothBotRot=90 end
-	elseif smoothTurning==-1 then
-		smoothBotRot=smoothBotRot-(dt/smoothTime)*90
-		if smoothBotRot<-90 then smoothBotRot=-90 end
-	end
-	
+		
 	update()
 	
 end
@@ -462,7 +448,7 @@ function love.keypressed(key)
 		fullscreenSwitch()
 	end
 		
-	if updateCounter==0 then
+	--if updateCounter==0 then
 	
 		if key=="up" then
 			FWD()
@@ -476,7 +462,7 @@ function love.keypressed(key)
 			WAIT()
 		end
 		
-	end
+	--end
 
 end
 
@@ -515,9 +501,22 @@ end
 
 function love.draw()
 	
-	
-	drawMap()
-	drawRobots()
+	if not victory then
+		drawMap()
+		drawRobots()
+		
+	else
+		love.graphics.setFont(fonts["VICTORY"])
+		if victory=="WON" then
+			love.graphics.printf("You have won the game!",0,height/2-40,width,"center")
+		elseif victory=="LOST" then
+			love.graphics.printf("You have lost the game!",0,height/2-40,width,"center")
+		else
+			love.graphics.printf("You have received a false victory/loss!",0,height/2-40,width,"center")
+		end
+		
+		love.graphics.setFont(fonts["DEFAULT"])
+	end
 	
 	
 	
@@ -559,6 +558,7 @@ function love.draw()
 		debugStuffADD(string.format("HDG: %s",robot["HDG"]))
 		debugStuffADD(string.format("updatecounter: %s",updateCounter))
 		debugStuffADD(string.format("SBR: %s",smoothBotRot))
+		debugStuffADD(string.format("actionThreads: %s",#actionThreads))
 		
 		
 		love.graphics.print(debugStuff,10,-20)
